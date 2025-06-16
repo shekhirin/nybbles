@@ -893,6 +893,28 @@ impl Nibbles {
         self.length = new_length;
     }
 
+    /// Extend the current nibbles with another byte slice without checking bounds.
+    ///
+    /// This method does not validate that the resulting length stays within the maximum
+    /// capacity of 64 nibbles. If the capacity is exceeded, the behavior may be undefined
+    /// or result in data corruption.
+    ///
+    /// Note that it is possible to create invalid [`Nibbles`] instances using this method. See
+    /// [the type docs](Self) for more details.
+    pub fn extend_from_slice_unchecked(&mut self, other: &[u8]) {
+        if other.is_empty() {
+            return;
+        }
+
+        let len_bytes = other.len();
+        let mut other = U256::from_be_slice(other);
+        if len_bytes > 0 {
+            other = other.wrapping_shl((U256::BYTES - len_bytes) * 8);
+        }
+        self.nibbles |= other.wrapping_shr(self.bit_len());
+        self.length += len_bytes * 2;
+    }
+
     /// Truncates the current nibbles to the given length.
     #[inline]
     pub fn truncate(&mut self, new_len: usize) {
@@ -1608,6 +1630,36 @@ mod tests {
         // Test that extending a partial nibbles beyond capacity panics
         let mut nibbles = Nibbles::from_nibbles([0x1, 0x2, 0x3, 0x4]); // 4 nibbles
         nibbles.extend_from_slice(&[0xAB; 31]); // +62 = 66 total > 64 max
+    }
+
+    #[test]
+    fn extend_from_slice_unchecked() {
+        // Test basic extension
+        let mut nibbles = Nibbles::from_nibbles([0x1, 0x2]);
+        nibbles.extend_from_slice_unchecked(&[0x34]);
+        assert_eq!(nibbles, Nibbles::from_nibbles([0x1, 0x2, 0x3, 0x4]));
+
+        // Test extending empty nibbles
+        let mut nibbles = Nibbles::new();
+        nibbles.extend_from_slice_unchecked(&[0xAB, 0xCD]);
+        assert_eq!(nibbles, Nibbles::from_nibbles([0xA, 0xB, 0xC, 0xD]));
+
+        // Test extending with empty slice (should be no-op)
+        let mut nibbles = Nibbles::from_nibbles([0x1, 0x2]);
+        nibbles.extend_from_slice_unchecked(&[]);
+        assert_eq!(nibbles, Nibbles::from_nibbles([0x1, 0x2]));
+
+        // Test multiple extensions
+        let mut nibbles = Nibbles::new();
+        nibbles.extend_from_slice_unchecked(&[0x12]);
+        nibbles.extend_from_slice_unchecked(&[0x34]);
+        nibbles.extend_from_slice_unchecked(&[0x56]);
+        assert_eq!(nibbles, Nibbles::from_nibbles([0x1, 0x2, 0x3, 0x4, 0x5, 0x6]));
+
+        // Test extending up to capacity without bounds check
+        let mut nibbles = Nibbles::new();
+        nibbles.extend_from_slice_unchecked(&[0xAB; 32]); // 64 nibbles (max)
+        assert_eq!(nibbles.len(), 64);
     }
 
     #[cfg(feature = "arbitrary")]
