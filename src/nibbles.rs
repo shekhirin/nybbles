@@ -864,6 +864,10 @@ impl Nibbles {
     ///
     /// Note that it is possible to create invalid [`Nibbles`] instances using this method. See
     /// [the type docs](Self) for more details.
+    /// 
+    /// # Panics
+    /// 
+    /// Panics if extending would cause the total length to exceed the maximum capacity of 64 nibbles.
     pub fn extend_from_slice(&mut self, other: &[u8]) {
         if other.is_empty() {
             return;
