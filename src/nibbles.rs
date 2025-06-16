@@ -870,12 +870,23 @@ impl Nibbles {
         }
 
         let len_bytes = other.len();
+        let new_length = self.length + len_bytes * 2;
+        
+        // Check if the new length would exceed the maximum capacity
+        assert!(
+            new_length <= NIBBLES,
+            "extend_from_slice would exceed maximum nibble capacity: {} + {} > {}",
+            self.length,
+            len_bytes * 2,
+            NIBBLES
+        );
+
         let mut other = U256::from_be_slice(other);
         if len_bytes > 0 {
             other = other.wrapping_shl((U256::BYTES - len_bytes) * 8);
         }
         self.nibbles |= other.wrapping_shr(self.bit_len());
-        self.length += len_bytes * 2;
+        self.length = new_length;
     }
 
     /// Truncates the current nibbles to the given length.
@@ -1559,6 +1570,40 @@ mod tests {
             Nibbles::from_nibbles([0x1, 0x2, 0x3, 0xF, 0xF]).increment().unwrap(),
             Nibbles::from_nibbles([0x1, 0x2, 0x4, 0x0, 0x0])
         );
+    }
+
+    #[test]
+    fn extend_from_slice_length_validation() {
+        // Test that extending within capacity works fine
+        let mut nibbles = Nibbles::new();
+        nibbles.extend_from_slice(&[0xAB; 30]); // 60 nibbles
+        assert_eq!(nibbles.len(), 60);
+
+        // Test extending up to exactly the capacity
+        let mut nibbles = Nibbles::new();
+        nibbles.extend_from_slice(&[0xAB; 32]); // 64 nibbles (max)
+        assert_eq!(nibbles.len(), 64);
+
+        // Test that we can extend a partial nibbles up to capacity
+        let mut nibbles = Nibbles::from_nibbles([0x1, 0x2, 0x3, 0x4]); // 4 nibbles
+        nibbles.extend_from_slice(&[0xAB; 30]); // +60 = 64 total
+        assert_eq!(nibbles.len(), 64);
+    }
+
+    #[test]
+    #[should_panic(expected = "extend_from_slice would exceed maximum nibble capacity")]
+    fn extend_from_slice_exceeds_capacity() {
+        // Test that extending beyond capacity panics
+        let mut nibbles = Nibbles::new();
+        nibbles.extend_from_slice(&[0xAB; 33]); // 66 nibbles > 64 max
+    }
+
+    #[test]
+    #[should_panic(expected = "extend_from_slice would exceed maximum nibble capacity")]
+    fn extend_from_slice_partial_exceeds_capacity() {
+        // Test that extending a partial nibbles beyond capacity panics
+        let mut nibbles = Nibbles::from_nibbles([0x1, 0x2, 0x3, 0x4]); // 4 nibbles
+        nibbles.extend_from_slice(&[0xAB; 31]); // +62 = 66 total > 64 max
     }
 
     #[cfg(feature = "arbitrary")]
